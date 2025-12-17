@@ -1,5 +1,8 @@
 import numpy as np
 import os
+import ale_py
+from gymnasium.utils.step_api_compatibility import step_api_compatibility
+
 os.environ.setdefault('PATH', '')
 
 try:
@@ -7,11 +10,25 @@ try:
 except ImportError:
     MPI = None
 
-import gym
+import gymnasium as gym
 import cv2
 cv2.ocl.setUseOpenCL(False)
+gym.register_envs(ale_py)
 
 from vec_env import DummyVecEnv, Monitor, ShmemVecEnv
+
+
+# from https://github.com/Farama-Foundation/Gymnasium/blob/v0.29.1/gymnasium/wrappers/step_api_compatibility.py
+class StepAPICompatibility(gym.Wrapper):
+    def __init__(self, env: gym.Env):
+        gym.Wrapper.__init__(self, env)
+        self.is_vector_env = isinstance(env.unwrapped, gym.vector.VectorEnv)
+
+    def step(self, action):
+        step_returns = self.env.step(action)
+        return step_api_compatibility(
+            step_returns, output_truncation_bool=False, is_vector_env=self.is_vector_env
+        )
 
 
 class TimeLimit(gym.Wrapper):
@@ -50,7 +67,7 @@ class NoopResetEnv(gym.Wrapper):
         if self.override_num_noops is not None:
             noops = self.override_num_noops
         else:
-            noops = self.unwrapped.np_random.randint(1, self.noop_max + 1)  # pylint: disable=E1101
+            noops = self.unwrapped.np_random.integers(1, self.noop_max + 1)  # pylint: disable=E1101
         assert noops > 0
         obs = None
         for _ in range(noops):
@@ -105,7 +122,7 @@ class EpisodicLifeEnv(gym.Wrapper):
             # the environment advertises done.
             done = True
         self.lives = lives
-        return obs, reward, done, info
+        return obs, reward, done, False, info  # truncated expected by gymnasium wrappers
 
     def reset(self, **kwargs):
         """Reset only when lives are exhausted.
@@ -118,7 +135,7 @@ class EpisodicLifeEnv(gym.Wrapper):
             # no-op step to advance from terminal/lost life state
             obs, _, _, _ = self.env.step(0)
         self.lives = self.env.unwrapped.ale.lives()
-        return obs
+        return obs, {}  # tuple expected by gymnasium wrappers
 
 
 class MaxAndSkipEnv(gym.Wrapper):
@@ -216,6 +233,7 @@ class WarpFrame(gym.ObservationWrapper):
 def make_atari(env_id, max_episode_steps=None):
     env = gym.make(env_id)
     assert 'NoFrameskip' in env.spec.id
+    env = StepAPICompatibility(env)
     env = NoopResetEnv(env, noop_max=30)
     env = MaxAndSkipEnv(env, skip=4)
     if max_episode_steps is not None:
@@ -262,7 +280,7 @@ def make_atari_env(env_id, subrank=0, seed=None, env_kwargs=None, wrapper_kwargs
     del env_kwargs
     wrapper_kwargs = wrapper_kwargs or {}
     env = make_atari(env_id, 108_000)
-    env.seed(seed + subrank if seed is not None else None)
+    env.reset(seed=seed + subrank if seed is not None else None)
     env = Monitor(env, allow_early_resets=True)
     env = wrap_deepmind(env, **wrapper_kwargs)
     return env

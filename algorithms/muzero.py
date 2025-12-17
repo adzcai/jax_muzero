@@ -25,12 +25,12 @@ def generate_update_fn(agent: agents.Agent, opt_update, unroll_steps: int, td_st
                        value_coef: float, policy_coef: float):
     def loss(params: Params, target_params: Params, trajectory: ActorOutput, rng_key: chex.PRNGKey):
         # 1. Make predictions. Unroll the model from the first state.
-        timestep = jax.tree_map(lambda t: t[:1], trajectory)
+        timestep = jax.tree.map(lambda t: t[:1], trajectory)
         learner_root = agent.root_unroll(params, timestep)
-        learner_root = jax.tree_map(lambda t: t[0], learner_root)
+        learner_root = jax.tree.map(lambda t: t[0], learner_root)
 
         # Fill the actions after the absorbing state with random actions.
-        unroll_trajectory = jax.tree_map(lambda t: t[:unroll_steps + 1], trajectory)
+        unroll_trajectory = jax.tree.map(lambda t: t[:unroll_steps + 1], trajectory)
         random_action_mask = jnp.cumprod(1. - unroll_trajectory.first[1:]) == 0.
         action_sequence = unroll_trajectory.action_tm1[1:]
         num_actions = learner_root.logits.shape[-1]
@@ -51,7 +51,7 @@ def generate_update_fn(agent: agents.Agent, opt_update, unroll_steps: int, td_st
 
         ## 2.2 Policy
         target_roots = agent.root_unroll(target_params, trajectory)
-        search_roots = jax.tree_map(lambda t: t[:unroll_steps + 1], target_roots)
+        search_roots = jax.tree.map(lambda t: t[:unroll_steps + 1], target_roots)
         rng_key, search_key = jax.random.split(rng_key)
         search_keys = jax.random.split(search_key, search_roots.state.shape[0])
         target_trees = jax.vmap(agent.mcts, (0, None, 0, None))(search_keys, target_params, search_roots, False)
@@ -71,7 +71,7 @@ def generate_update_fn(agent: agents.Agent, opt_update, unroll_steps: int, td_st
             # According to the EfficientZero source code, it is unnecessary to use the search value for bootstrapping.
             # See: https://github.com/YeWR/EfficientZero/blob/main/main.py#L41
             #   and https://github.com/YeWR/EfficientZero/blob/main/core/reanalyze_worker.py#L325
-            bootstrap_value = jax.tree_map(lambda t: t[i + td_steps], target_roots.value)
+            bootstrap_value = jax.tree.map(lambda t: t[i + td_steps], target_roots.value)
             _rewards = jnp.concatenate([rewards[i:i + td_steps], bootstrap_value[None]], axis=0)
             _discounts = jnp.concatenate([jnp.ones((1,)), jnp.cumprod(discounts[i:i + td_steps])], axis=0)
             return jnp.sum(_rewards * _discounts)
@@ -154,8 +154,9 @@ def generate_update_fn(agent: agents.Agent, opt_update, unroll_steps: int, td_st
 class Experiment(tune.Trainable):
     def setup(self, config):
         self._config = config
-        platform = jax.lib.xla_bridge.get_backend().platform
-        self._num_devices = jax.lib.xla_bridge.device_count()
+        backend = jax.lib.xla_bridge.get_backend()
+        platform = backend.platform
+        self._num_devices = backend.device_count()
         logging.warning("Running on %s %s(s)", self._num_devices, platform)
 
         seed = config['seed']
@@ -280,7 +281,7 @@ class Experiment(tune.Trainable):
         init_timestep = self._actor.initial_timestep()
         self._replay_buffer.extend(init_timestep)
         self._num_frames += init_timestep.observation.shape[0]
-        act_params = jax.tree_map(lambda t: t[0], self._params)
+        act_params = jax.tree.map(lambda t: t[0], self._params)
         while not self._replay_buffer.ready():
             self._rng_key, timesteps, epinfos = self._actor.step(self._rng_key, act_params, random=True)
             self._replay_buffer.extend(timesteps)
@@ -316,17 +317,17 @@ class Experiment(tune.Trainable):
             self._trajectories = jax.device_put_sharded(self._trajectories, jax.local_devices())
 
             if self._num_frames < self._total_frames:
-                act_params = jax.tree_map(lambda t: t[0], self._params)
+                act_params = jax.tree.map(lambda t: t[0], self._params)
                 temperature = self._temperature_fn(self._num_frames)
                 self._rng_key, timesteps, epinfos = self._actor.step(
                     self._rng_key, act_params, random=False, temperature=temperature)
                 self._replay_buffer.extend(timesteps)
                 self._num_frames += timesteps.observation.shape[0]
 
-        act_params = jax.tree_map(lambda t: t[0], self._params)
+        act_params = jax.tree.map(lambda t: t[0], self._params)
         self._rng_key, epinfos = self._evaluate_actor.evaluate(self._rng_key, act_params)
 
-        log = jax.tree_map(lambda t: t[0], log)
+        log = jax.tree.map(lambda t: t[0], log)
         log = jax.device_get(log)
         log.update({
             'ups': self._log_interval / (time.time() - t0),

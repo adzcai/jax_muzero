@@ -1,5 +1,5 @@
 import chex
-import gym
+import gymnasium as gym
 import haiku as hk
 import jax
 import jax.numpy as jnp
@@ -61,9 +61,9 @@ class Agent(object):
     def _root_step(self, rng_key: chex.PRNGKey, params: Params, timesteps: ActorOutput, temperature: float,
                    is_eval: bool):
         """The input `timesteps` is assumed to be [input_dim]."""
-        trajectories = jax.tree_map(lambda t: t[None], timesteps)  # Add a dummy time dimension.
+        trajectories = jax.tree.map(lambda t: t[None], timesteps)  # Add a dummy time dimension.
         agent_out = self.root_unroll(params, trajectories)
-        agent_out = jax.tree_map(lambda t: t.squeeze(axis=0), agent_out)  # Squeeze the dummy time dimension.
+        agent_out = jax.tree.map(lambda t: t.squeeze(axis=0), agent_out)  # Squeeze the dummy time dimension.
         search_key, sample_key, greedy_key = jax.random.split(rng_key, 3)
         tree = self.mcts(search_key, params, agent_out, is_eval)
         act_prob = self.act_prob(tree.visit_count[0], temperature)

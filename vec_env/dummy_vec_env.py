@@ -46,20 +46,20 @@ class DummyVecEnv(VecEnv):
     def step_wait(self):
         for e in range(self.num_envs):
             if self.buf_dones[e]:
-                obs = self.envs[e].reset()
+                obs, _info = self.envs[e].reset()
                 self.buf_rews[e] = 0.
                 self.buf_dones[e] = False
                 self.buf_infos[e] = {}
             else:
                 action = self.actions[e]
-                obs, self.buf_rews[e], self.buf_dones[e], self.buf_infos[e] = self.envs[e].step(action)
+                obs, self.buf_rews[e], self.buf_dones[e], _, self.buf_infos[e] = self.envs[e].step(action)
             self._save_obs(e, obs)
         return (self._obs_from_buf(), np.copy(self.buf_rews), np.copy(self.buf_dones),
                 self.buf_infos.copy())
 
     def reset(self):
         for e in range(self.num_envs):
-            obs = self.envs[e].reset()
+            obs, _info = self.envs[e].reset()
             self.buf_dones[e] = False
             self._save_obs(e, obs)
         return self._obs_from_buf()

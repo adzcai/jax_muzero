@@ -1,30 +1,6 @@
 import chex
 import jax
 import jax.numpy as jnp
-import numpy as np
-import tree as tree_util
-
-
-def pack_namedtuple_jnp(xs, axis=0):
-    return jax.tree_map(lambda *xs: jnp.stack(xs, axis=axis), *xs)
-
-
-def pack_namedtuple_np(xs, axis=0):
-    return tree_util.map_structure(lambda *xs: np.stack(xs, axis=axis), *xs)
-
-
-def unpack_namedtuple_jnp(structure, axis=0):
-    transposed = jax.tree_map(lambda t: jnp.moveaxis(t, axis, 0), structure)
-    flat = jax.tree_flatten(transposed)
-    unpacked = list(map(lambda xs: jax.tree_unflatten(structure, xs), zip(*flat)))
-    return unpacked
-
-
-def unpack_namedtuple_np(structure, axis=0):
-    transposed = tree_util.map_structure(lambda t: np.moveaxis(t, axis, 0), structure)
-    flat = tree_util.flatten(transposed)
-    unpacked = list(map(lambda xs: tree_util.unflatten_as(structure, xs), zip(*flat)))
-    return unpacked
 
 
 def scale_gradient(g, scale: float):

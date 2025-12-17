@@ -1,6 +1,4 @@
 from abc import ABC, abstractmethod
-import contextlib
-import os
 
 import numpy as np
 
@@ -134,8 +132,8 @@ class VecEnv(ABC):
 
     def get_viewer(self):
         if self.viewer is None:
-            from gym.envs.classic_control import rendering
-            self.viewer = rendering.SimpleImageViewer()
+            from .rendering import SimpleImageViewer
+            self.viewer = SimpleImageViewer()
         return self.viewer
 
 
