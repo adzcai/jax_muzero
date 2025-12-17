@@ -52,7 +52,7 @@ class DummyVecEnv(VecEnv):
                 self.buf_infos[e] = {}
             else:
                 action = self.actions[e]
-                obs, self.buf_rews[e], self.buf_dones[e], _, self.buf_infos[e] = self.envs[e].step(action)
+                obs, self.buf_rews[e], self.buf_dones[e], self.buf_infos[e] = self.envs[e].step(action)
             self._save_obs(e, obs)
         return (self._obs_from_buf(), np.copy(self.buf_rews), np.copy(self.buf_dones),
                 self.buf_infos.copy())

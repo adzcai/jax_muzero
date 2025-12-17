@@ -62,7 +62,7 @@ class NoopResetEnv(gym.Wrapper):
         assert env.unwrapped.get_action_meanings()[0] == 'NOOP'
 
     def reset(self, **kwargs):
-        """ Do no-op action for a number of steps in [1, noop_max]."""
+        """Do no-op action for a number of steps in [1, noop_max]."""
         self.env.reset(**kwargs)
         if self.override_num_noops is not None:
             noops = self.override_num_noops
@@ -122,7 +122,8 @@ class EpisodicLifeEnv(gym.Wrapper):
             # the environment advertises done.
             done = True
         self.lives = lives
-        return obs, reward, done, False, info  # truncated expected by gymnasium wrappers
+        # truncated expected by gymnasium wrappers
+        return obs, reward, done, False, info
 
     def reset(self, **kwargs):
         """Reset only when lives are exhausted.
@@ -149,19 +150,21 @@ class MaxAndSkipEnv(gym.Wrapper):
     def step(self, action):
         """Repeat action, sum reward, and max over last observations."""
         total_reward = 0.0
-        done = None
+        term, trunc, info = None, None, None
         for i in range(self._skip):
-            obs, reward, done, info = self.env.step(action)
-            if i == self._skip - 2: self._obs_buffer[0] = obs
-            if i == self._skip - 1: self._obs_buffer[1] = obs
+            obs, reward, term, trunc, info = self.env.step(action)
+            if i == self._skip - 2:
+                self._obs_buffer[0] = obs
+            if i == self._skip - 1:
+                self._obs_buffer[1] = obs
             total_reward += reward
-            if done:
+            if term or trunc:
                 break
         # Note that the observation on the done=True frame
         # doesn't matter
         max_frame = self._obs_buffer.max(axis=0)
 
-        return max_frame, total_reward, done, info
+        return max_frame, total_reward, term, trunc, info
 
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
@@ -206,7 +209,9 @@ class WarpFrame(gym.ObservationWrapper):
         else:
             original_space = self.observation_space.spaces[self._key]
             self.observation_space.spaces[self._key] = new_space
-        assert original_space.dtype == np.uint8 and len(original_space.shape) == 3
+        assert original_space.dtype == np.uint8 and len(original_space.shape) == 3, (
+            original_space
+        )
 
     def observation(self, obs):
         if self._key is None:
@@ -231,9 +236,7 @@ class WarpFrame(gym.ObservationWrapper):
 
 
 def make_atari(env_id, max_episode_steps=None):
-    env = gym.make(env_id)
-    assert 'NoFrameskip' in env.spec.id
-    env = StepAPICompatibility(env)
+    env = gym.make(env_id + 'NoFrameskip-v4')
     env = NoopResetEnv(env, noop_max=30)
     env = MaxAndSkipEnv(env, skip=4)
     if max_episode_steps is not None:
@@ -241,20 +244,42 @@ def make_atari(env_id, max_episode_steps=None):
     return env
 
 
-def wrap_deepmind(env, episode_life=True, clip_rewards=True):
-    """Configure environment for DeepMind-style Atari.
-    """
+def make_xminigrid(env_id, max_episode_steps=None):
+    # nested imports since xminigrid allocates jax arrays at import time which breaks subprocesses
+    import xminigrid
+    from xminigrid.wrappers import GymAutoResetWrapper
+    from xminigrid.experimental.img_obs import RGBImgObservationWrapper
+    from vec_env.jax_wrapper import JaxWrapper
+
+    env, env_params = xminigrid.make(env_id, max_steps=max_episode_steps)
+    env = GymAutoResetWrapper(env)
+    # env = DirectionObservationWrapper(env)
+    env = RGBImgObservationWrapper(env)  # to align with atari
+    env = JaxWrapper(env, env_params)
+    return env
+
+
+def wrap_deepmind(env, episode_life=True, clip_rewards=True, dict_space_key=None):
+    """Configure environment for DeepMind-style Atari."""
     if episode_life:
         env = EpisodicLifeEnv(env)
     # if 'FIRE' in env.unwrapped.get_action_meanings():
     #     env = FireResetEnv(env)
-    env = WarpFrame(env, 96, 96, grayscale=False)
+    env = WarpFrame(env, 96, 96, grayscale=False, dict_space_key=dict_space_key)
     if clip_rewards:
         env = ClipRewardEnv(env)
     return env
 
 
-def make_vec_env(env_id, num_env, seed, env_kwargs=None, wrapper_kwargs=None, start_index=0, force_dummy=False):
+def make_vec_env(
+    env_id,
+    num_env,
+    seed,
+    env_kwargs=None,
+    wrapper_kwargs=None,
+    start_index=0,
+    force_dummy=False,
+):
     """
     Create a wrapped, monitored SubprocVecEnv for Atari.
     """
@@ -279,8 +304,13 @@ def make_vec_env(env_id, num_env, seed, env_kwargs=None, wrapper_kwargs=None, st
 def make_atari_env(env_id, subrank=0, seed=None, env_kwargs=None, wrapper_kwargs=None):
     del env_kwargs
     wrapper_kwargs = wrapper_kwargs or {}
-    env = make_atari(env_id, 108_000)
+    if env_id.startswith('MiniGrid'):
+        env = make_xminigrid(env_id)
+        wrapper_kwargs = {**wrapper_kwargs, 'episode_life': False}
+    else:
+        env = make_atari(env_id, 108_000)
     env.reset(seed=seed + subrank if seed is not None else None)
     env = Monitor(env, allow_early_resets=True)
     env = wrap_deepmind(env, **wrapper_kwargs)
+    env = StepAPICompatibility(env)  # comes after since gym.ObservationWrapper expects five
     return env

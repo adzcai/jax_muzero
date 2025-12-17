@@ -160,7 +160,7 @@ class Experiment(tune.Trainable):
         logging.warning("Running on %s %s(s)", self._num_devices, platform)
 
         seed = config['seed']
-        env_id = config['env_id'] + 'NoFrameskip-v4'
+        env_id = config['env_id']
         self._envs = atari.make_vec_env(
             env_id,
             num_env=config['num_envs'],

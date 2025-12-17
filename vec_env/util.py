@@ -2,7 +2,6 @@
 Helpers for dealing with vectorized environments.
 """
 
-from collections import OrderedDict
 
 import gymnasium as gym
 import numpy as np
@@ -36,10 +35,10 @@ def obs_space_info(obs_space):
         dtypes: a dict mapping keys to dtypes.
     """
     if isinstance(obs_space, gym.spaces.Dict):
-        assert isinstance(obs_space.spaces, OrderedDict)
+        assert isinstance(obs_space.spaces, dict), obs_space.spaces
         subspaces = obs_space.spaces
     elif isinstance(obs_space, gym.spaces.Tuple):
-        assert isinstance(obs_space.spaces, tuple)
+        assert isinstance(obs_space.spaces, tuple), obs_space.spaces
         subspaces = {i: obs_space.spaces[i] for i in range(len(obs_space.spaces))}
     else:
         subspaces = {None: obs_space}

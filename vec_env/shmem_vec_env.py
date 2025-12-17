@@ -4,6 +4,7 @@ An interface for asynchronous vectorized environments.
 
 import logging
 import multiprocessing as mp
+import os
 import numpy as np
 from .vec_env import VecEnv, CloudpickleWrapper
 import ctypes
@@ -146,18 +147,19 @@ def _subproc_worker(
             np.copyto(dst=obs_buf[k][idx], src=flatdict[k])
 
     parent_pipe.close()
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")  # children can't access cuda
     env = env_fn_wrapper.x()
     done = True
     try:
         while True:
             cmd = pipe.recv()
             if cmd == 'reset':
-                _write_obs(env.reset())
+                _write_obs(env.reset()[0])
                 done = False
                 pipe.send(None)
             elif cmd == 'step':
                 if done:
-                    obs = env.reset()
+                    obs = env.reset()[0]
                     reward = 0.
                     done = False
                     info = {}
